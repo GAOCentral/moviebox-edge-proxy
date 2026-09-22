@@ -30,7 +30,10 @@ export default async function handler(request) {
     reqUrl.searchParams.get('ua') ||
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
   );
-  outboundHeaders.set('Accept-Encoding', 'identity');
+  // Do NOT set Accept-Encoding: identity — it forces the CDN to send a
+  // raw uncompressed stream that Vercel's edge buffers fully before forwarding,
+  // causing the ~71MB cutoff. Let the edge runtime handle encoding transparently.
+  outboundHeaders.set('Accept-Encoding', 'gzip, deflate, br');
 
   // Dynamic Referer/Origin resolution
   const customRef = reqUrl.searchParams.get('ref') || reqUrl.searchParams.get('referrer');
@@ -59,13 +62,34 @@ export default async function handler(request) {
   });
 
   // 4. Construct Response with CORS & Range Support
-  const respHeaders = new Headers(upstream.headers);
+  const respHeaders = new Headers();
+
+  // Copy only safe headers — deliberately exclude Content-Length so the browser
+  // relies on chunked transfer encoding instead of a fixed byte count that may
+  // be wrong after any encoding transformation by the edge runtime.
+  const copyHeaders = [
+    'content-type',
+    'content-range',
+    'content-disposition',
+    'accept-ranges',
+    'last-modified',
+    'etag',
+    'cache-control',
+    'expires',
+  ];
+  for (const h of copyHeaders) {
+    const v = upstream.headers.get(h);
+    if (v) respHeaders.set(h, v);
+  }
+
   respHeaders.set('Access-Control-Allow-Origin', '*');
   respHeaders.set(
     'Access-Control-Expose-Headers',
     'Content-Length, Content-Range, Content-Disposition, Accept-Ranges'
   );
   respHeaders.set('Accept-Ranges', 'bytes');
+  // Remove Transfer-Encoding if set upstream (edge runtime handles this)
+  respHeaders.delete('transfer-encoding');
 
   const filename = reqUrl.searchParams.get('filename');
   const isDownload = reqUrl.searchParams.get('download');

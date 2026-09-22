@@ -24,7 +24,10 @@ export default async (request, context) => {
     reqUrl.searchParams.get('ua') ||
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
   );
-  outboundHeaders.set('Accept-Encoding', 'identity');
+  // Do NOT set Accept-Encoding: identity — forces CDN to send raw uncompressed
+  // bytes which Netlify edge then buffers entirely, causing speed to collapse
+  // to ~2kbps. Let the edge handle encoding transparently.
+  outboundHeaders.set('Accept-Encoding', 'gzip, deflate, br');
 
   const customRef = reqUrl.searchParams.get('ref') || reqUrl.searchParams.get('referrer');
   if (customRef) {
@@ -49,13 +52,32 @@ export default async (request, context) => {
     redirect: 'follow',
   });
 
-  const respHeaders = new Headers(upstream.headers);
+  // Copy only safe headers — deliberately exclude Content-Length so the browser
+  // relies on chunked transfer instead of a fixed byte count that may be wrong
+  // after any encoding transformation by the edge runtime.
+  const respHeaders = new Headers();
+  const copyHeaders = [
+    'content-type',
+    'content-range',
+    'content-disposition',
+    'accept-ranges',
+    'last-modified',
+    'etag',
+    'cache-control',
+    'expires',
+  ];
+  for (const h of copyHeaders) {
+    const v = upstream.headers.get(h);
+    if (v) respHeaders.set(h, v);
+  }
+
   respHeaders.set('Access-Control-Allow-Origin', '*');
   respHeaders.set(
     'Access-Control-Expose-Headers',
     'Content-Length, Content-Range, Content-Disposition, Accept-Ranges'
   );
   respHeaders.set('Accept-Ranges', 'bytes');
+  respHeaders.delete('transfer-encoding');
 
   const filename = reqUrl.searchParams.get('filename');
   const isDownload = reqUrl.searchParams.get('download');
