@@ -24,10 +24,8 @@ export default async (request, context) => {
     reqUrl.searchParams.get('ua') ||
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
   );
-  // Do NOT set Accept-Encoding: identity — forces CDN to send raw uncompressed
-  // bytes which Netlify edge then buffers entirely, causing speed to collapse
-  // to ~2kbps. Let the edge handle encoding transparently.
-  outboundHeaders.set('Accept-Encoding', 'gzip, deflate, br');
+  // identity = no compression. MP4 is already compressed; gzip would tank speeds.
+  outboundHeaders.set('Accept-Encoding', 'identity');
 
   const customRef = reqUrl.searchParams.get('ref') || reqUrl.searchParams.get('referrer');
   if (customRef) {
@@ -58,6 +56,7 @@ export default async (request, context) => {
   const respHeaders = new Headers();
   const copyHeaders = [
     'content-type',
+    'content-length',
     'content-range',
     'content-disposition',
     'accept-ranges',
