@@ -87,6 +87,7 @@ export default async (request, context) => {
 
   // Handle HEAD requests cleanly: return headers only, no body
   if (request.method === 'HEAD') {
+    respHeaders.delete('content-length');
     return new Response(null, {
       status: upstream.status,
       statusText: upstream.statusText,
