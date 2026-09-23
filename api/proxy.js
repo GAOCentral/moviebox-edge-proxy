@@ -97,6 +97,15 @@ export default async function handler(request) {
     respHeaders.set('Content-Disposition', `attachment; filename="${safeName}"`);
   }
 
+  // Handle HEAD requests cleanly: return headers only, no body
+  if (request.method === 'HEAD') {
+    return new Response(null, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: respHeaders,
+    });
+  }
+
   const contentLength = Number(upstream.headers.get('content-length') || 0);
   // For small bounded chunks (e.g. video player range seeks <= 10MB), return an ArrayBuffer
   // so the edge runtime is guaranteed not to strip Content-Length, preventing player buffer stalls.
