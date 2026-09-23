@@ -97,6 +97,19 @@ export default async function handler(request) {
     respHeaders.set('Content-Disposition', `attachment; filename="${safeName}"`);
   }
 
+  const contentLength = Number(upstream.headers.get('content-length') || 0);
+  // For small bounded chunks (e.g. video player range seeks <= 10MB), return an ArrayBuffer
+  // so the edge runtime is guaranteed not to strip Content-Length, preventing player buffer stalls.
+  if (contentLength > 0 && contentLength <= 10 * 1024 * 1024) {
+    const buf = await upstream.arrayBuffer();
+    respHeaders.set('Content-Length', String(buf.byteLength));
+    return new Response(buf, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: respHeaders,
+    });
+  }
+
   return new Response(upstream.body, {
     status: upstream.status,
     statusText: upstream.statusText,

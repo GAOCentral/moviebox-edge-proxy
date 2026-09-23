@@ -85,6 +85,17 @@ export default async (request, context) => {
     respHeaders.set('Content-Disposition', `attachment; filename="${safeName}"`);
   }
 
+  const contentLength = Number(upstream.headers.get('content-length') || 0);
+  if (contentLength > 0 && contentLength <= 10 * 1024 * 1024) {
+    const buf = await upstream.arrayBuffer();
+    respHeaders.set('Content-Length', String(buf.byteLength));
+    return new Response(buf, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: respHeaders,
+    });
+  }
+
   return new Response(upstream.body, {
     status: upstream.status,
     statusText: upstream.statusText,
